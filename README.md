@@ -37,11 +37,12 @@ Metrics computed per token step and layer:
  
 | Metric | Description |
 |---|---|
-| `obj_iou` | Otsu-thresholded IoU against object mask |
+| `obj_iou` | Heatmaps IoU against object mask (Original TAM)|
+| `func_iou` | Functional words heatmap agains background (Original TAM)|
+| `f1_iou` | Harmonic mean of obj_iou and func_iou (Original TAM) |
 | `iou_hard` | Hard IoU at 0.5 threshold |
 | `io_ratio` | Fraction of heatmap mass inside the GT mask [Q-GroundCAM](https://arxiv.org/abs/2404.19128) |
 | `wdp` | Distance-weighted penalty for activation outside GT mask [Q-GroundCAM](https://arxiv.org/abs/2404.19128) |
-| `f1_iou` | Harmonic mean of obj_iou and io_ratio |
  
 Outputs saved to `results/`:
 - `results.csv` — one row per (image, layer, step, target)
