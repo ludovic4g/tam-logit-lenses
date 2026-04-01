@@ -9,7 +9,7 @@ This repo extends the original [Token Activation Map (TAM)](https://github.com/x
 | File | Purpose |
 |---|---|
 | `demo.py` | Original TAM demo with logit-lens across all layers and generate per-token heatmap grids - three models are employed in the demo for now.|
-| `eval_spatial.py` | Evaluate TAM heatmaps against binary object masks and spatial relation masks - not only based on TAM original metrics but also on three other, check below for more information. |
+| `new_eval.py` | Evaluate TAM heatmaps against binary object masks and spatial relation masks - not only based on TAM original metrics but also on three other, check below for more information. |
  
 ---
  
