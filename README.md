@@ -39,8 +39,8 @@ Metrics computed per token step and layer:
 |---|---|
 | `obj_iou` | Otsu-thresholded IoU against object mask |
 | `iou_hard` | Hard IoU at 0.5 threshold |
-| `io_ratio` | Fraction of heatmap mass inside the GT mask |
-| `wdp` | Distance-weighted penalty for activation outside GT mask |
+| `io_ratio` | Fraction of heatmap mass inside the GT mask [Q-GroundCAM](https://arxiv.org/abs/2404.19128) |
+| `wdp` | Distance-weighted penalty for activation outside GT mask [Q-GroundCAM](https://arxiv.org/abs/2404.19128) |
 | `f1_iou` | Harmonic mean of obj_iou and io_ratio |
  
 Outputs saved to `results/`:
