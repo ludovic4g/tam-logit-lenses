@@ -198,16 +198,24 @@ def _pnorm(x: np.ndarray, lo=1.0, hi=99.0) -> np.ndarray:
     return np.clip((x - vlo) / d, 0.0, 1.0)
 
 
-def metric_obj_iou(heatmap: np.ndarray, mask: np.ndarray) -> float:
-    """Otsu-thresholded IoU — same method as eval.py."""
+def metric_obj_iou_and_thresh(heatmap: np.ndarray, mask: np.ndarray):
+    """Calcola sia l'IoU che la soglia Otsu usata dall'oggetto (serve per il func_iou)."""
     h, w = mask.shape
     hm = cv2.resize(heatmap, (w, h))
     t, pred = cv2.threshold(hm, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     gt = mask.astype(np.uint8)
     if gt.sum() == 0:
-        return float("nan")
+        return float("nan"), t
     tp = float((gt * (pred > 0)).sum())
-    return tp / ((gt + pred / 255) > 0).sum()
+    obj_iou = tp / ((gt + pred / 255) > 0).sum()
+    return obj_iou, t
+
+
+def metric_func_iou(heatmap: np.ndarray, fg_thresh: float) -> float:
+    """Implementazione classica del func_iou: frazione di heatmap inferiore alla soglia Otsu."""
+    if heatmap.size == 0:
+        return float("nan")
+    return float((heatmap < fg_thresh).sum()) / heatmap.size
 
 
 def metric_iou_hard(heatmap: np.ndarray, mask: np.ndarray,
@@ -245,11 +253,27 @@ def metric_wdp(heatmap: np.ndarray, mask: np.ndarray, eps: float = 1e-12) -> flo
 
 
 def compute_all_metrics(heatmap: np.ndarray, mask: np.ndarray) -> dict:
-    obj  = metric_obj_iou(heatmap, mask)
+    obj_iou, fg_thresh = metric_obj_iou_and_thresh(heatmap, mask)
     hard = metric_iou_hard(heatmap, mask)
     io   = metric_io_ratio(heatmap, mask)
     wdp  = metric_wdp(heatmap, mask)
-    return {"obj_iou": obj, "iou_hard": hard, "io_ratio": io, "wdp": wdp}
+    
+    # Calcoliamo le metriche classiche di eval.py
+    func = metric_func_iou(heatmap, fg_thresh)
+    
+    # Calcoliamo il vero F1 classico
+    f1 = float("nan")
+    if not math.isnan(obj_iou) and not math.isnan(func) and (obj_iou + func) > 0:
+        f1 = 2 * obj_iou * func / (obj_iou + func)
+        
+    return {
+        "obj_iou": obj_iou, 
+        "iou_hard": hard, 
+        "io_ratio": io, 
+        "wdp": wdp, 
+        "func_iou": func, 
+        "f1_iou": f1
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -572,7 +596,7 @@ def evaluate_image(ctx: dict, obj_masks: dict, spatial_cfg: dict,
                     "image": stem, "layer": layer_idx, "step": step,
                     "token": tok_lbl,
                     "target_type": "object", "target": obj_name,
-                    **m, "func_iou": float("nan"), "f1_iou": float("nan"),
+                    **m
                 })
 
             # --- metrics against spatial relation mask ---
@@ -599,7 +623,7 @@ def evaluate_image(ctx: dict, obj_masks: dict, spatial_cfg: dict,
                             "token": tok_lbl,
                             "target_type": f"relation_{canon}",
                             "target": f"{sub_name}__{obj_name}",
-                            **m, "func_iou": float("nan"), "f1_iou": float("nan"),
+                            **m
                         })
 
     # Build per-token grids (token across layers)
@@ -801,36 +825,41 @@ if __name__ == "__main__":
             vals = [r[metric] for r in rlist
                     if isinstance(r[metric], float) and not math.isnan(r[metric])]
             return sum(vals) / len(vals) if vals else float("nan")
+        
         obj  = avg("obj_iou")
         hard = avg("iou_hard")
         io   = avg("io_ratio")
         wdp  = avg("wdp")
+        func = avg("func_iou")
+        
         f1   = float("nan")
-        if not math.isnan(obj) and not math.isnan(io) and (obj + io) > 0:
-            f1 = 2 * obj * io / (obj + io)
+        if not math.isnan(obj) and not math.isnan(func) and (obj + func) > 0:
+            f1 = 2 * obj * func / (obj + func)
+            
         summary_rows.append({
             "target_type": ttype, "target": target, "layer": layer,
             "n": len(rlist),
             "obj_iou":  round(obj,  4), "iou_hard": round(hard, 4),
             "io_ratio": round(io,   4), "wdp":      round(wdp,  4),
+            "func_iou": round(func, 4),
             "f1_iou":   round(f1,   4) if not math.isnan(f1) else "nan",
         })
 
     summary_path = OUT_DIR / "summary.csv"
     sum_fields = ["target_type", "target", "layer", "n",
-                  "obj_iou", "iou_hard", "io_ratio", "wdp", "f1_iou"]
+                  "obj_iou", "iou_hard", "io_ratio", "wdp", "func_iou", "f1_iou"]
     with summary_path.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=sum_fields)
         w.writeheader()
         w.writerows(summary_rows)
     print(f"Summary CSV -> {summary_path}")
 
-    print("\n" + "=" * 72)
+    print("\n" + "=" * 82)
     print(f"{'target_type':<22} {'target':<20} {'L':>3} {'obj_iou':>8} "
-          f"{'iou_hard':>8} {'io_ratio':>8} {'wdp':>7} {'f1_iou':>7}")
-    print("-" * 72)
+          f"{'iou_hard':>8} {'io_ratio':>8} {'wdp':>7} {'func_iou':>8} {'f1_iou':>7}")
+    print("-" * 82)
     for r in summary_rows:
         print(f"{r['target_type']:<22} {r['target']:<20} {r['layer']:>3} "
               f"{r['obj_iou']:>8} {r['iou_hard']:>8} {r['io_ratio']:>8} "
-              f"{r['wdp']:>7} {r['f1_iou']:>7}")
-    print("=" * 72)
+              f"{r['wdp']:>7} {r['func_iou']:>8} {r['f1_iou']:>7}")
+    print("=" * 82)
